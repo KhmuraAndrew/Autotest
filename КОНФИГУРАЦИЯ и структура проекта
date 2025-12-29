@@ -1,0 +1,22 @@
+project/
+├── src/
+│   ├── components/
+│   │   └── Button/
+│   │       ├── Button.jsx
+│   │       └── Button.test.jsx
+│   ├── services/
+│   │   ├── api.js
+│   │   └── api.test.js
+│   └── utils/
+│       ├── math.js
+│       └── math.test.js
+├── tests/
+│   ├── e2e/
+│   │   └── auth.e2e.test.js
+│   ├── integration/
+│   │   └── order.integration.test.js
+│   └── utils/
+│       └── testHelpers.js
+├── jest.config.js
+├── playwright.config.js
+└── package.json
