@@ -1,0 +1,163 @@
+// orderService.js
+class OrderService {
+  constructor(paymentGateway, inventoryService, emailService) {
+    this.paymentGateway = paymentGateway;
+    this.inventoryService = inventoryService;
+    this.emailService = emailService;
+  }
+
+  async placeOrder(order) {
+    // 1. Проверка наличия товара
+    const isAvailable = await this.inventoryService.checkAvailability(
+      order.productId,
+      order.quantity
+    );
+    
+    if (!isAvailable) {
+      throw new Error('Product not available');
+    }
+
+    // 2. Обработка платежа
+    const paymentResult = await this.paymentGateway.charge(
+      order.customerId,
+      order.totalAmount
+    );
+    
+    if (!paymentResult.success) {
+      throw new Error(`Payment failed: ${paymentResult.error}`);
+    }
+
+    // 3. Обновление инвентаря
+    await this.inventoryService.updateStock(
+      order.productId,
+      -order.quantity
+    );
+
+    // 4. Отправка подтверждения
+    await this.emailService.sendOrderConfirmation(
+      order.customerEmail,
+      order
+    );
+
+    return {
+      success: true,
+      orderId: `ORD-${Date.now()}`,
+      paymentId: paymentResult.id,
+    };
+  }
+}
+
+// orderService.integration.test.js
+describe('OrderService integration tests', () => {
+  let orderService;
+  let mockPaymentGateway;
+  let mockInventoryService;
+  let mockEmailService;
+
+  beforeEach(() => {
+    // Создаем моки зависимостей
+    mockPaymentGateway = {
+      charge: jest.fn(),
+    };
+    
+    mockInventoryService = {
+      checkAvailability: jest.fn(),
+      updateStock: jest.fn(),
+    };
+    
+    mockEmailService = {
+      sendOrderConfirmation: jest.fn(),
+    };
+
+    orderService = new OrderService(
+      mockPaymentGateway,
+      mockInventoryService,
+      mockEmailService
+    );
+  });
+
+  describe('placeOrder method', () => {
+    const mockOrder = {
+      productId: 'PROD-123',
+      quantity: 2,
+      customerId: 'CUST-456',
+      totalAmount: 199.99,
+      customerEmail: 'customer@example.com',
+    };
+
+    test('should successfully place order', async () => {
+      // Настраиваем моки
+      mockInventoryService.checkAvailability.mockResolvedValue(true);
+      mockPaymentGateway.charge.mockResolvedValue({
+        success: true,
+        id: 'PAY-789',
+      });
+      mockInventoryService.updateStock.mockResolvedValue();
+      mockEmailService.sendOrderConfirmation.mockResolvedValue();
+
+      // Выполняем действие
+      const result = await orderService.placeOrder(mockOrder);
+
+      // Проверяем результат
+      expect(result.success).toBe(true);
+      expect(result.orderId).toMatch(/^ORD-/);
+      expect(result.paymentId).toBe('PAY-789');
+
+      // Проверяем взаимодействие с зависимостями
+      expect(mockInventoryService.checkAvailability)
+        .toHaveBeenCalledWith('PROD-123', 2);
+      
+      expect(mockPaymentGateway.charge)
+        .toHaveBeenCalledWith('CUST-456', 199.99);
+      
+      expect(mockInventoryService.updateStock)
+        .toHaveBeenCalledWith('PROD-123', -2);
+      
+      expect(mockEmailService.sendOrderConfirmation)
+        .toHaveBeenCalledWith('customer@example.com', mockOrder);
+    });
+
+    test('should fail when product is not available', async () => {
+      mockInventoryService.checkAvailability.mockResolvedValue(false);
+
+      await expect(orderService.placeOrder(mockOrder))
+        .rejects.toThrow('Product not available');
+
+      // Проверяем, что платеж не был обработан
+      expect(mockPaymentGateway.charge).not.toHaveBeenCalled();
+    });
+
+    test('should fail when payment fails', async () => {
+      mockInventoryService.checkAvailability.mockResolvedValue(true);
+      mockPaymentGateway.charge.mockResolvedValue({
+        success: false,
+        error: 'Insufficient funds',
+      });
+
+      await expect(orderService.placeOrder(mockOrder))
+        .rejects.toThrow('Payment failed: Insufficient funds');
+
+      // Проверяем, что инвентарь не обновлялся
+      expect(mockInventoryService.updateStock).not.toHaveBeenCalled();
+    });
+
+    test('should handle partial failures gracefully', async () => {
+      // Тест на сценарий, когда платеж прошел, но отправка email упала
+      mockInventoryService.checkAvailability.mockResolvedValue(true);
+      mockPaymentGateway.charge.mockResolvedValue({
+        success: true,
+        id: 'PAY-789',
+      });
+      mockInventoryService.updateStock.mockResolvedValue();
+      mockEmailService.sendOrderConfirmation.mockRejectedValue(
+        new Error('Email service unavailable')
+      );
+
+      // Проверяем, что ошибка отправки email не влияет на создание заказа
+      const result = await orderService.placeOrder(mockOrder);
+      
+      expect(result.success).toBe(true);
+      expect(mockInventoryService.updateStock).toHaveBeenCalled();
+    });
+  });
+});
