@@ -1,0 +1,119 @@
+// calculator.js
+class Calculator {
+  add(a, b) {
+    return a + b;
+  }
+
+  subtract(a, b) {
+    return a - b;
+  }
+
+  multiply(a, b) {
+    return a * b;
+  }
+
+  divide(a, b) {
+    if (b === 0) {
+      throw new Error('Cannot divide by zero');
+    }
+    return a / b;
+  }
+
+  calculateDiscount(price, discountPercent) {
+    if (price < 0 || discountPercent < 0 || discountPercent > 100) {
+      throw new Error('Invalid input');
+    }
+    return price * (1 - discountPercent / 100);
+  }
+}
+
+// calculator.test.js
+describe('Calculator class', () => {
+  let calculator;
+
+  // Хук, который выполняется перед каждым тестом
+  beforeEach(() => {
+    calculator = new Calculator();
+  });
+
+  describe('Basic operations', () => {
+    test('add should return sum of two numbers', () => {
+      // Arrange (подготовка)
+      const a = 5;
+      const b = 3;
+      
+      // Act (действие)
+      const result = calculator.add(a, b);
+      
+      // Assert (проверка)
+      expect(result).toBe(8);
+    });
+
+    test('subtract should return difference of two numbers', () => {
+      expect(calculator.subtract(10, 4)).toBe(6);
+      expect(calculator.subtract(4, 10)).toBe(-6);
+    });
+
+    test('multiply should return product of two numbers', () => {
+      // Несколько проверок в одном тесте
+      expect(calculator.multiply(3, 4)).toBe(12);
+      expect(calculator.multiply(0, 5)).toBe(0);
+      expect(calculator.multiply(-3, 4)).toBe(-12);
+    });
+  });
+
+  describe('Divide operation', () => {
+    test('divide should return quotient of two numbers', () => {
+      expect(calculator.divide(10, 2)).toBe(5);
+      expect(calculator.divide(9, 2)).toBe(4.5);
+    });
+
+    test('divide should throw error when dividing by zero', () => {
+      // Проверка исключений
+      expect(() => calculator.divide(10, 0)).toThrow('Cannot divide by zero');
+      expect(() => calculator.divide(10, 0)).toThrowError(Error);
+    });
+  });
+
+  describe('calculateDiscount method', () => {
+    test('should calculate correct discount', () => {
+      // Параметризованный тест с таблицей значений
+      const testCases = [
+        { price: 1000, discount: 20, expected: 800 },
+        { price: 500, discount: 10, expected: 450 },
+        { price: 100, discount: 0, expected: 100 },
+        { price: 100, discount: 100, expected: 0 },
+      ];
+
+      testCases.forEach(({ price, discount, expected }) => {
+        const result = calculator.calculateDiscount(price, discount);
+        expect(result).toBe(expected);
+      });
+    });
+
+    test('should throw error for invalid inputs', () => {
+      const invalidCases = [
+        { price: -100, discount: 10 },
+        { price: 100, discount: -10 },
+        { price: 100, discount: 150 },
+      ];
+
+      invalidCases.forEach(({ price, discount }) => {
+        expect(() => calculator.calculateDiscount(price, discount))
+          .toThrow('Invalid input');
+      });
+    });
+  });
+
+  // Тесты на граничные значения
+  describe('Edge cases', () => {
+    test('should handle decimal numbers', () => {
+      expect(calculator.add(0.1, 0.2)).toBeCloseTo(0.3);
+      // Для дробных чисел используем toBeCloseTo вместо toBe
+    });
+
+    test('should handle large numbers', () => {
+      expect(calculator.multiply(1000000, 1000000)).toBe(1000000000000);
+    });
+  });
+});
