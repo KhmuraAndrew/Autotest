@@ -1,0 +1,192 @@
+// auth.e2e.test.js
+const { test, expect } = require('@playwright/test');
+
+// Конфигурация тестов
+test.describe('Authentication E2E Tests', () => {
+  // Хуки для всей группы тестов
+  test.beforeEach(async ({ page }) => {
+    await page.goto('http://localhost:3000');
+  });
+
+  test.describe('Login functionality', () => {
+    test('should login successfully with valid credentials', async ({ page }) => {
+      // Заполняем форму
+      await page.fill('#username', 'testuser');
+      await page.fill('#password', 'Password123!');
+      
+      // Кликаем кнопку входа
+      await page.click('button[type="submit"]');
+      
+      // Ждем перехода или появления элемента
+      await page.waitForURL('**/dashboard');
+      
+      // Проверяем успешный вход
+      await expect(page.locator('.user-greeting')).toContainText('Welcome, testuser');
+      await expect(page).toHaveURL(/dashboard/);
+      
+      // Проверяем, что появилась кнопка выхода
+      await expect(page.locator('.logout-btn')).toBeVisible();
+    });
+
+    test('should show error with invalid credentials', async ({ page }) => {
+      await page.fill('#username', 'wronguser');
+      await page.fill('#password', 'wrongpass');
+      await page.click('button[type="submit"]');
+      
+      // Проверяем сообщение об ошибке
+      await expect(page.locator('.error-message')).toBeVisible();
+      await expect(page.locator('.error-message')).toContainText(
+        'Invalid username or password'
+      );
+      
+      // Проверяем, что остались на той же странице
+      await expect(page).toHaveURL('http://localhost:3000/login');
+    });
+
+    test('should validate required fields', async ({ page }) => {
+      // Пытаемся отправить пустую форму
+      await page.click('button[type="submit"]');
+      
+      // Проверяем валидационные сообщения
+      await expect(page.locator('#username:invalid')).toBeVisible();
+      await expect(page.locator('#password:invalid')).toBeVisible();
+      
+      // Или проверяем кастомные сообщения
+      await expect(page.locator('.validation-error')).toHaveCount(2);
+    });
+
+    test('should have "Remember me" functionality', async ({ page }) => {
+      // Заполняем форму
+      await page.fill('#username', 'testuser');
+      await page.fill('#password', 'Password123!');
+      
+      // Активируем чекбокс
+      await page.check('#remember-me');
+      
+      await page.click('button[type="submit"]');
+      await page.waitForURL('**/dashboard');
+      
+      // Выходим
+      await page.click('.logout-btn');
+      await page.waitForURL('**/login');
+      
+      // Проверяем, что логин сохранен
+      await expect(page.locator('#username')).toHaveValue('testuser');
+      await expect(page.locator('#remember-me')).toBeChecked();
+    });
+  });
+
+  test.describe('Registration functionality', () => {
+    test('should register new user successfully', async ({ page }) => {
+      // Переходим на страницу регистрации
+      await page.click('a[href="/register"]');
+      await page.waitForURL('**/register');
+      
+      // Заполняем форму регистрации
+      await page.fill('#email', 'newuser@example.com');
+      await page.fill('#username', 'newuser');
+      await page.fill('#password', 'SecurePass123!');
+      await page.fill('#confirmPassword', 'SecurePass123!');
+      
+      // Соглашаемся с условиями
+      await page.check('#terms');
+      
+      // Отправляем форму
+      await page.click('button[type="submit"]');
+      
+      // Проверяем успешную регистрацию
+      await page.waitForURL('**/welcome');
+      await expect(page.locator('.success-message')).toContainText(
+        'Registration successful'
+      );
+      
+      // Проверяем отправку email подтверждения
+      await expect(page.locator('.email-confirmation')).toBeVisible();
+    });
+
+    test('should validate password strength', async ({ page }) => {
+      await page.click('a[href="/register"]');
+      await page.waitForURL('**/register');
+      
+      // Пытаемся использовать слабый пароль
+      await page.fill('#password', '123');
+      
+      // Проверяем сообщение о силе пароля
+      await expect(page.locator('.password-strength')).toHaveClass(/weak/);
+      await expect(page.locator('.password-hint')).toContainText(
+        'Password must be at least 8 characters'
+      );
+      
+      // Проверяем, что кнопка отправки неактивна
+      await expect(page.locator('button[type="submit"]')).toBeDisabled();
+    });
+
+    test('should match password and confirmation', async ({ page }) => {
+      await page.click('a[href="/register"]');
+      
+      await page.fill('#password', 'Password123!');
+      await page.fill('#confirmPassword', 'DifferentPass456!');
+      
+      // Проверяем сообщение о несовпадении паролей
+      await expect(page.locator('.password-match-error')).toBeVisible();
+      await expect(page.locator('button[type="submit"]')).toBeDisabled();
+    });
+  });
+
+  test.describe('Password recovery', () => {
+    test('should recover password successfully', async ({ page }) => {
+      // Переходим на страницу восстановления
+      await page.click('a[href="/forgot-password"]');
+      await page.waitForURL('**/forgot-password');
+      
+      // Заполняем email
+      await page.fill('#email', 'user@example.com');
+      await page.click('button[type="submit"]');
+      
+      // Проверяем сообщение об успехе
+      await expect(page.locator('.success-message')).toContainText(
+        'Reset instructions sent to your email'
+      );
+      
+      // Проверяем возможность ввода кода подтверждения
+      await expect(page.locator('#reset-code')).toBeVisible();
+    });
+
+    test('should reset password with valid code', async ({ page }) => {
+      // Предполагаем, что у нас уже есть страница сброса с кодом
+      await page.goto('http://localhost:3000/reset-password?code=ABC123');
+      
+      await page.fill('#newPassword', 'NewSecurePass123!');
+      await page.fill('#confirmNewPassword', 'NewSecurePass123!');
+      await page.click('button[type="submit"]');
+      
+      // Проверяем успешный сброс и редирект на страницу логина
+      await page.waitForURL('**/login');
+      await expect(page.locator('.success-message')).toContainText(
+        'Password reset successful'
+      );
+    });
+  });
+
+  // Тест с моками API
+  test('should handle API errors gracefully', async ({ page }) => {
+    // Мокаем API запрос
+    await page.route('**/api/login', route => {
+      route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Internal Server Error' }),
+      });
+    });
+    
+    await page.fill('#username', 'testuser');
+    await page.fill('#password', 'Password123!');
+    await page.click('button[type="submit"]');
+    
+    // Проверяем отображение ошибки сервера
+    await expect(page.locator('.server-error')).toBeVisible();
+    await expect(page.locator('.server-error')).toContainText(
+      'Server error. Please try again later.'
+    );
+  });
+});
