@@ -1,0 +1,156 @@
+// apiService.js
+class ApiService {
+  constructor() {
+    this.baseUrl = 'https://api.example.com';
+  }
+
+  async fetchUser(userId) {
+    const response = await fetch(`${this.baseUrl}/users/${userId}`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    return response.json();
+  }
+
+  async postData(data) {
+    const response = await fetch(`${this.baseUrl}/data`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+    
+    return response.json();
+  }
+
+  async fetchWithRetry(url, retries = 3) {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const response = await fetch(url);
+        if (response.ok) return response.json();
+      } catch (error) {
+        if (i === retries - 1) throw error;
+        // Ждем перед повторной попыткой
+        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+      }
+    }
+  }
+}
+
+// apiService.test.js
+describe('ApiService class', () => {
+  let apiService;
+  let mockFetch;
+
+  beforeEach(() => {
+    apiService = new ApiService();
+    mockFetch = jest.fn();
+    global.fetch = mockFetch;
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe('fetchUser method', () => {
+    test('should return user data on successful request', async () => {
+      // Arrange
+      const mockUser = { id: 1, name: 'John Doe' };
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockUser,
+      });
+
+      // Act
+      const result = await apiService.fetchUser(1);
+
+      // Assert
+      expect(mockFetch).toHaveBeenCalledWith('https://api.example.com/users/1');
+      expect(result).toEqual(mockUser);
+    });
+
+    test('should throw error on failed request', async () => {
+      // Arrange
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+      });
+
+      // Act & Assert
+      await expect(apiService.fetchUser(999)).rejects.toThrow(
+        'HTTP error! status: 404'
+      );
+    });
+
+    test('should handle network errors', async () => {
+      // Arrange
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+      // Act & Assert
+      await expect(apiService.fetchUser(1)).rejects.toThrow('Network error');
+    });
+  });
+
+  describe('postData method', () => {
+    test('should send POST request with correct data', async () => {
+      // Arrange
+      const mockResponse = { success: true, id: 123 };
+      const testData = { name: 'Test', value: 42 };
+      
+      mockFetch.mockResolvedValueOnce({
+        json: async () => mockResponse,
+      });
+
+      // Act
+      const result = await apiService.postData(testData);
+
+      // Assert
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.example.com/data',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(testData),
+        }
+      );
+      expect(result).toEqual(mockResponse);
+    });
+  });
+
+  describe('fetchWithRetry method', () => {
+    test('should retry on failure and succeed', async () => {
+      // Arrange
+      const mockResponse = { data: 'success' };
+      
+      mockFetch
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => mockResponse,
+        });
+
+      // Act
+      const result = await apiService.fetchWithRetry('https://api.example.com/test');
+
+      // Assert
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(result).toEqual(mockResponse);
+    });
+
+    test('should throw error after max retries', async () => {
+      // Arrange
+      mockFetch.mockRejectedValue(new Error('Network error'));
+
+      // Act & Assert
+      await expect(apiService.fetchWithRetry('https://api.example.com/test', 2))
+        .rejects.toThrow('Network error');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+  });
+});
